@@ -102,7 +102,7 @@ func (fc *FritzboxCollector) Collect(ch chan<- prometheus.Metric) {
 			var err error
 			lastResult, err = action.Call()
 			if err != nil {
-				log.Printf("could not call action %s: %v", action.Name, err)
+				log.Printf("could not call service %s action %s: %v", service.ServiceType ,action.Name, err)
 				collectErrors.Inc()
 				continue
 			}

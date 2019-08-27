@@ -125,11 +125,11 @@ func convertResult(val string, arg *Argument) (interface{}, error) {
 	case "boolean":
 		return bool(val == "1"), nil
 
-	case "ui1", "ui2", "ui4":
+	case "ui1", "ui2", "ui4", "i4":
 		// type ui4 can contain values greater than 2^32!
 		res, err := strconv.ParseUint(val, 10, 64)
 		if err != nil {
-			return nil, errors.Wrap(err, "could nto parse uint")
+			return nil, errors.Wrap(err, "could not parse uint")
 		}
 		return uint64(res), nil
 	default:
