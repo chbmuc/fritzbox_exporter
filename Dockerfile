@@ -3,9 +3,9 @@ FROM golang AS build-env
 LABEL maintainer="Max Schmitt <max@schmitt.mx>"
 LABEL description="FRITZ!Box Prometheus exporter"
 
-ADD . /go/src/github.com/mxschmitt/fritzbox_exporter
+ADD . /go/src/github.com/maxilampert/fritzbox_exporter
 
-RUN cd /go/src/github.com/mxschmitt/fritzbox_exporter/cmd/exporter && \
+RUN cd /go/src/github.com/maxilampert/fritzbox_exporter/cmd/exporter && \
     go get ./... && \
     CGO_ENABLED=0 go build -o /exporter
 
