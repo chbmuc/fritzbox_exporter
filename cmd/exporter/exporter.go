@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mxschmitt/fritzbox_exporter/pkg/fritzboxmetrics"
+	"github.com/maxilampert/fritzbox_exporter/pkg/fritzboxmetrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
