@@ -67,7 +67,7 @@ func main() {
 }
 
 func printToStdout(settings *Settings) error {
-	root, err := fritzboxmetrics.LoadServices(settings.FritzBox.IP, uint16(settings.FritzBox.Port), settings.FritzBox.UserName, settings.FritzBox.IP)
+	root, err := fritzboxmetrics.LoadServices(settings.FritzBox.IP, uint16(settings.FritzBox.Port), settings.FritzBox.UserName, settings.FritzBox.Password)
 	if err != nil {
 		return errors.Wrap(err, "could not load UPnP service")
 	}
