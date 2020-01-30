@@ -20,9 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/maxilampert/fritzbox_exporter/pkg/fritzboxmetrics"
+	"github.com/chbmuc/fritzbox_exporter/pkg/fritzboxmetrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const serviceLoadRetryTime = 1 * time.Minute
@@ -103,7 +102,7 @@ func (fc *FritzboxCollector) Collect(ch chan<- prometheus.Metric) {
 			var err error
 			lastResult, err = action.Call()
 			if err != nil {
-				log.Printf("could not call service %s action %s: %v", service.ServiceType ,action.Name, err)
+				log.Printf("could not call service %s action %s: %v", service.ServiceType, action.Name, err)
 				collectErrors.Inc()
 				continue
 			}

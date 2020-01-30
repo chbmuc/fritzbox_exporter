@@ -8,7 +8,7 @@ import (
 
 	envstruct "github.com/mxschmitt/golang-env-struct"
 
-	"github.com/maxilampert/fritzbox_exporter/pkg/fritzboxmetrics"
+	"github.com/chbmuc/fritzbox_exporter/pkg/fritzboxmetrics"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
