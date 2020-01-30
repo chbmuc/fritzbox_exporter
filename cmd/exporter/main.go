@@ -8,7 +8,7 @@ import (
 
 	envstruct "github.com/mxschmitt/golang-env-struct"
 
-	"github.com/mxschmitt/fritzbox_exporter/pkg/fritzboxmetrics"
+	"github.com/maxilampert/fritzbox_exporter/pkg/fritzboxmetrics"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -66,7 +66,7 @@ func main() {
 }
 
 func printToStdout(settings *Settings) error {
-	root, err := fritzboxmetrics.LoadServices(settings.FritzBox.IP, uint16(settings.FritzBox.Port), settings.FritzBox.UserName, settings.FritzBox.IP)
+	root, err := fritzboxmetrics.LoadServices(settings.FritzBox.IP, uint16(settings.FritzBox.Port), settings.FritzBox.UserName, settings.FritzBox.Password)
 	if err != nil {
 		return errors.Wrap(err, "could not load UPnP service")
 	}
