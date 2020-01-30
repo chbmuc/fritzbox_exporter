@@ -16,15 +16,11 @@ package fritzboxmetrics
 // limitations under the License.
 
 import (
-	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 
-	dac "github.com/123Haynes/go-http-digest-auth-client"
 	"github.com/pkg/errors"
 )
 
@@ -36,9 +32,6 @@ import (
 // curl http://fritz.box:49000/igd2ipv6fwcSCPD.xml
 
 const textXML = `text/xml; charset="utf-8"`
-
-// ErrInvalidSOAPResponse will be thrown if we've got an invalid SOAP response
-var ErrInvalidSOAPResponse = errors.New("invalid SOAP response")
 
 // Root of the UPNP tree
 type Root struct {
@@ -97,17 +90,6 @@ type Action struct {
 	ArgumentMap map[string]*Argument // Map of arguments indexed by .Name
 }
 
-// IsGetOnly returns if the action seems to be a query for information.
-// This is determined by checking if the action has no input arguments and at least one output argument.
-func (a *Action) IsGetOnly() bool {
-	for _, a := range a.Arguments {
-		if a.Direction == "in" {
-			return false
-		}
-	}
-	return len(a.Arguments) > 0
-}
-
 // An Argument to an action
 type Argument struct {
 	Name                 string `xml:"name"`
@@ -128,17 +110,26 @@ type StateVariable struct {
 // The type of the value is string, uint64 or bool depending of the DataType of the variable.
 type Result map[string]interface{}
 
-// load the whole tree
-func (r *Root) load() error {
-	response, err := http.Get(fmt.Sprintf("%s/igddesc.xml", r.BaseURL))
+func (r *Root) fetchAndDecode(path string) error {
+	uri := fmt.Sprintf("%s/%s", r.BaseURL, path)
+	response, err := http.Get(uri)
 	if err != nil {
-		return errors.Wrap(err, "could not get igddesc.xml")
+		return errors.Wrapf(err, "could not get %s", uri)
 	}
+	defer response.Body.Close()
 
 	dec := xml.NewDecoder(response.Body)
-
 	if err = dec.Decode(r); err != nil {
 		return errors.Wrap(err, "could not decode XML")
+	}
+
+	return nil
+}
+
+// load the whole tree
+func (r *Root) load() error {
+	if err := r.fetchAndDecode("igddesc.xml"); err != nil {
+		return err
 	}
 
 	r.Services = make(map[string]*Service)
@@ -146,14 +137,8 @@ func (r *Root) load() error {
 }
 
 func (r *Root) loadTr64() error {
-	igddesc, err := http.Get(fmt.Sprintf("%s/tr64desc.xml", r.BaseURL))
-	if err != nil {
-		return errors.Wrap(err, "could not fetch tr64desc.xml")
-	}
-
-	dec := xml.NewDecoder(igddesc.Body)
-	if err = dec.Decode(r); err != nil {
-		return errors.Wrap(err, "could not decode XML")
+	if err := r.fetchAndDecode("tr64desc.xml"); err != nil {
+		return err
 	}
 
 	r.Services = make(map[string]*Service)
@@ -172,36 +157,17 @@ func (d *Device) fillServices(r *Root) error {
 			return errors.Wrap(err, "could not get service descriptions")
 		}
 
-		var scpd scpdRoot
+		err = s.parseActions(response.Body)
+		response.Body.Close()
 
-		dec := xml.NewDecoder(response.Body)
-		if err = dec.Decode(&scpd); err != nil {
-			return errors.Wrap(err, "could not decode xml")
-		}
-
-		s.Actions = make(map[string]*Action)
-		for _, a := range scpd.Actions {
-			s.Actions[a.Name] = a
-		}
-		s.StateVariables = scpd.StateVariables
-
-		for _, a := range s.Actions {
-			a.service = s
-			a.ArgumentMap = make(map[string]*Argument)
-
-			for _, arg := range a.Arguments {
-				for _, svar := range s.StateVariables {
-					if arg.RelatedStateVariable == svar.Name {
-						arg.StateVariable = svar
-					}
-				}
-
-				a.ArgumentMap[arg.Name] = arg
-			}
+		if err != nil {
+			return err
 		}
 
 		r.Services[s.ServiceType] = s
 	}
+
+	// Handle sub-devices
 	for _, d2 := range d.Devices {
 		if err := d2.fillServices(r); err != nil {
 			return errors.Wrap(err, "could not fill services")
@@ -210,109 +176,36 @@ func (d *Device) fillServices(r *Root) error {
 	return nil
 }
 
-// Call an action.
-// Currently only actions without input arguments are supported.
-func (a *Action) Call() (Result, error) {
-	bodystr := fmt.Sprintf(`
-        <?xml version='1.0' encoding='utf-8'?>
-        <s:Envelope s:encodingStyle='http://schemas.xmlsoap.org/soap/encoding/' xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'>
-            <s:Body>
-                <u:%s xmlns:u='%s' />
-            </s:Body>
-        </s:Envelope>
-    `, a.Name, a.service.ServiceType)
+func (s *Service) parseActions(r io.Reader) error {
+	var scpd scpdRoot
 
-	url := a.service.Device.root.BaseURL + a.service.ControlURL
-	body := strings.NewReader(bodystr)
-
-	req, err := http.NewRequest("POST", url, body)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not create new request")
-	}
-
-	action := fmt.Sprintf("%s#%s", a.service.ServiceType, a.Name)
-
-	req.Header.Set("Content-Type", textXML)
-	req.Header.Set("SoapAction", action)
-
-	// Add digest authentification
-	t := dac.NewTransport(a.service.Device.root.Username, a.service.Device.root.Password)
-	resp, err := t.RoundTrip(req)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not roundtrip digest authentification")
-	}
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, errors.New("authorization required")
-	}
-
-	data := new(bytes.Buffer)
-	data.ReadFrom(resp.Body)
-
-	return a.parseSoapResponse(data)
-
-}
-
-func (a *Action) parseSoapResponse(r io.Reader) (Result, error) {
-	res := make(Result)
 	dec := xml.NewDecoder(r)
+	if err := dec.Decode(&scpd); err != nil {
+		return errors.Wrap(err, "could not decode xml")
+	}
 
-	for {
-		t, err := dec.Token()
-		if err == io.EOF {
-			return res, nil
-		}
+	s.Actions = make(map[string]*Action)
+	for _, a := range scpd.Actions {
+		s.Actions[a.Name] = a
+	}
+	s.StateVariables = scpd.StateVariables
 
-		if err != nil {
-			return nil, err
-		}
+	for _, a := range s.Actions {
+		a.service = s
+		a.ArgumentMap = make(map[string]*Argument)
 
-		if se, ok := t.(xml.StartElement); ok {
-			arg, ok := a.ArgumentMap[se.Name.Local]
-
-			if ok {
-				t2, err := dec.Token()
-				if err != nil {
-					return nil, err
+		for _, arg := range a.Arguments {
+			for _, svar := range s.StateVariables {
+				if arg.RelatedStateVariable == svar.Name {
+					arg.StateVariable = svar
 				}
-
-				var val string
-				switch element := t2.(type) {
-				case xml.EndElement:
-					val = ""
-				case xml.CharData:
-					val = string(element)
-				default:
-					return nil, ErrInvalidSOAPResponse
-				}
-
-				converted, err := convertResult(val, arg)
-				if err != nil {
-					return nil, err
-				}
-				res[arg.StateVariable.Name] = converted
 			}
+
+			a.ArgumentMap[arg.Name] = arg
 		}
-
 	}
-}
 
-func convertResult(val string, arg *Argument) (interface{}, error) {
-	switch arg.StateVariable.DataType {
-	case "string":
-		return val, nil
-	case "boolean":
-		return bool(val == "1"), nil
-
-	case "ui1", "ui2", "ui4":
-		// type ui4 can contain values greater than 2^32!
-		res, err := strconv.ParseUint(val, 10, 64)
-		if err != nil {
-			return nil, errors.Wrap(err, "could nto parse uint")
-		}
-		return uint64(res), nil
-	default:
-		return nil, fmt.Errorf("unknown datatype: %s", arg.StateVariable.DataType)
-	}
+	return nil
 }
 
 // LoadServices loads the services tree from a device.

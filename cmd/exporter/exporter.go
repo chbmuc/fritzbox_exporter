@@ -15,17 +15,12 @@ package main
 // limitations under the License.
 
 import (
-	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"sync"
 	"time"
 
-	"github.com/mxschmitt/golang-env-struct"
-
 	"github.com/mxschmitt/fritzbox_exporter/pkg/fritzboxmetrics"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -38,165 +33,6 @@ var (
 		Help: "Number of collection errors.",
 	})
 )
-
-type Metric struct {
-	Service string
-	Action  string
-	Result  string
-	OkValue string
-
-	Desc       *prometheus.Desc
-	MetricType prometheus.ValueType
-}
-
-var metrics = []*Metric{
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetTotalPacketsReceived",
-		Result:  "TotalPacketsReceived",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_packets_received",
-			"packets received on gateway WAN interface",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.CounterValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetTotalPacketsSent",
-		Result:  "TotalPacketsSent",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_packets_sent",
-			"packets sent on gateway WAN interface",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.CounterValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetAddonInfos",
-		Result:  "TotalBytesReceived",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_bytes_received",
-			"bytes received on gateway WAN interface",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.CounterValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetAddonInfos",
-		Result:  "TotalBytesSent",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_bytes_sent",
-			"bytes sent on gateway WAN interface",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.CounterValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetAddonInfos",
-		Result:  "ByteSendRate",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_bytes_send_rate",
-			"byte send rate on gateway WAN interface",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetAddonInfos",
-		Result:  "ByteReceiveRate",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_bytes_receive_rate",
-			"byte receive rate on gateway WAN interface",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetCommonLinkProperties",
-		Result:  "Layer1UpstreamMaxBitRate",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_layer1_upstream_max_bitrate",
-			"Layer1 upstream max bitrate",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetCommonLinkProperties",
-		Result:  "Layer1DownstreamMaxBitRate",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_layer1_downstream_max_bitrate",
-			"Layer1 downstream max bitrate",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
-		Action:  "GetCommonLinkProperties",
-		Result:  "PhysicalLinkStatus",
-		OkValue: "Up",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_layer1_link_status",
-			"Status of physical link (Up = 1)",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANIPConnection:1",
-		Action:  "GetStatusInfo",
-		Result:  "ConnectionStatus",
-		OkValue: "Connected",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_connection_status",
-			"WAN connection status (Connected = 1)",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:schemas-upnp-org:service:WANIPConnection:1",
-		Action:  "GetStatusInfo",
-		Result:  "Uptime",
-		Desc: prometheus.NewDesc(
-			"gateway_wan_connection_uptime_seconds",
-			"WAN connection uptime",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-	{
-		Service: "urn:dslforum-org:service:WLANConfiguration:1",
-		Action:  "GetTotalAssociations",
-		Result:  "TotalAssociations",
-		Desc: prometheus.NewDesc(
-			"gateway_wlan_current_connections",
-			"current WLAN connections",
-			[]string{"gateway"},
-			nil,
-		),
-		MetricType: prometheus.GaugeValue,
-	},
-}
 
 type FritzboxCollector struct {
 	Gateway  string
@@ -267,7 +103,7 @@ func (fc *FritzboxCollector) Collect(ch chan<- prometheus.Metric) {
 			var err error
 			lastResult, err = action.Call()
 			if err != nil {
-				log.Printf("could not call action: %v", err)
+				log.Printf("could not call action %s: %v", action.Name, err)
 				collectErrors.Inc()
 				continue
 			}
@@ -306,83 +142,6 @@ func (fc *FritzboxCollector) Collect(ch chan<- prometheus.Metric) {
 			m.Desc,
 			m.MetricType,
 			floatval,
-			fc.Gateway,
 		)
 	}
-}
-
-func printToStdout(settings *Settings) error {
-	root, err := fritzboxmetrics.LoadServices(settings.FritzBox.IP, uint16(settings.FritzBox.Port), settings.FritzBox.UserName, settings.FritzBox.IP)
-	if err != nil {
-		return errors.Wrap(err, "could not load UPnP service")
-	}
-
-	for _, s := range root.Services {
-		for _, a := range s.Actions {
-			if !a.IsGetOnly() {
-				continue
-			}
-
-			res, err := a.Call()
-			if err != nil {
-				log.Printf("unexpected error: %v", err)
-				continue
-			}
-
-			fmt.Printf("  %s\n", a.Name)
-			for _, arg := range a.Arguments {
-				fmt.Printf("    %s: %v\n", arg.RelatedStateVariable, res[arg.StateVariable.Name])
-			}
-		}
-	}
-	return nil
-}
-
-type Settings struct {
-	Stdout     bool   `env:"STDOUT"`
-	ListenAddr string `env:"LISTEN_ADDR"`
-	FritzBox   struct {
-		IP       string `env:"IP"`
-		Port     int    `env:"PORT"`
-		UserName string `env:"USERNAME"`
-		Password string `env:"PASSWORD"`
-	} `env:"FRITZ_BOX"`
-}
-
-func main() {
-	settings := &Settings{}
-	flag.BoolVar(&settings.Stdout, "stdout", false, "print all available metrics to stdout")
-	flag.StringVar(&settings.ListenAddr, "listen-address", ":9133", "The address to listen on for HTTP requests.")
-
-	flag.StringVar(&settings.FritzBox.IP, "gateway-address", "fritz.box", "The hostname or IP of the FRITZ!Box")
-	flag.IntVar(&settings.FritzBox.Port, "gateway-port", 49000, "The port of the FRITZ!Box UPnP service")
-	flag.StringVar(&settings.FritzBox.UserName, "username", "", "The user for the FRITZ!Box UPnP service")
-	flag.StringVar(&settings.FritzBox.Password, "password", "", "The password for the FRITZ!Box UPnP service")
-	flag.Parse()
-
-	if err := envstruct.ApplyEnvVars(settings, "FRITZ_BOX_EXPORTER"); err != nil {
-		log.Fatalf("could not apply environment variables: %v", err)
-	}
-
-	if settings.Stdout {
-		if err := printToStdout(settings); err != nil {
-			log.Fatalf("could not print metrics to stdout: %v", err)
-		}
-		return
-	}
-
-	collector := &FritzboxCollector{
-		Gateway:  settings.FritzBox.IP,
-		Port:     uint16(settings.FritzBox.Port),
-		Username: settings.FritzBox.UserName,
-		Password: settings.FritzBox.Password,
-	}
-
-	go collector.LoadServices()
-
-	prometheus.MustRegister(collector)
-	prometheus.MustRegister(collectErrors)
-
-	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(settings.ListenAddr, nil))
 }
